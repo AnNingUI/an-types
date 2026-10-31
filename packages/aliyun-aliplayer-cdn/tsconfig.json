@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": false,
+    "noImplicitAny": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["index.d.ts", "test-d/**/*.ts"]
+}

@@ -1,0 +1,83 @@
+{
+  "name": "@an-types/aliyun-aliplayer-cdn",
+  "version": "2.19.0",
+  "description": "Highly detailed TypeScript type definitions for the Aliyun Aliplayer CDN bundle (aliplayer-min.js), derived from and validated against the actual runtime of v2.19.0.",
+  "keywords": [
+    "typescript",
+    "types",
+    "ts",
+    "declarations",
+    "definition",
+    "aliyun",
+    "aliplayer",
+    "apsara-media",
+    "imp-web-player",
+    "video-player",
+    "media-player",
+    "hls",
+    "flv",
+    "rts",
+    "webrtc",
+    "vod",
+    "drm",
+    "live",
+    "cdn"
+  ],
+  "license": "MIT",
+  "author": "an-types",
+  "homepage": "https://github.com/an-types/an-types#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/an-types/an-types.git",
+    "directory": "packages/aliyun-aliplayer-cdn"
+  },
+  "bugs": {
+    "url": "https://github.com/an-types/an-types/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "anTypes": {
+    "provenance": {
+      "comment": "The artifact these types describe. The package version MUST equal the player version in the bundle banner; tools/verify-source.mjs enforces this. Namespaced rather than a top-level field so no bundler or package manager can mistake it for a module-resolution hint.",
+      "bundleUrl": "https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/aliplayer-min.js",
+      "bannerPattern": "aliyun-aliplayer\\s*-\\s*v([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "cacheFile": "aliyun-aliplayer-cdn.js",
+      "sha256": "7c2bf11bb9d552fb161997cc2c6ba0a92de71e755da6a1ddd0edc89eca1ff436",
+      "bytes": 630798,
+      "cssUrl": "https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/skins/default/aliplayer-min.css",
+      "rtsVersion": "2.4.3",
+      "flashVersion": "2.8.2"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && tsc -p tsconfig.global.json",
+    "test:positive": "tsc -p tsconfig.test.json",
+    "test:global": "tsc -p tsconfig.global.json",
+    "lint": "tsc -p tsconfig.json",
+    "verify:source": "node ../../tools/verify-source.mjs aliyun-aliplayer-cdn --offline",
+    "clean": "node -e \"const fs=require('fs');for(const f of ['tsconfig.tsbuildinfo','dist'])fs.rmSync(f,{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

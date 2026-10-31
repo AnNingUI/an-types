@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": false,
+    "types": [],
+    "module": "none",
+    "moduleResolution": "node10",
+    "resolveJsonModule": false,
+    "verbatimModuleSyntax": false,
+    "isolatedModules": false,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+  },
+  "include": ["index.d.ts", "test-d/global-usage.ts"]
+}

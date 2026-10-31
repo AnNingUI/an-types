@@ -1,0 +1,13 @@
+{
+    "@an-types/aliyun-aliplayer-cdn": {
+        "description": "Aliyun Apsara Media Box Web Player ",
+        "entry": "./packages/aliyun-aliplayer-cdn",
+        "versions": [
+            {
+                "version": "2.19.0",
+                "code:status": "done",
+                "npm:status": "todo"
+            }
+        ]
+    }
+}

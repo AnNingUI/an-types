@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": false,
+    "types": [],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["index.d.ts", "test-d/**/*.ts"]
+}
