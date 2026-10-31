@@ -1,7 +1,6 @@
 {
   "name": "an-types",
   "version": "1.0.0",
-  "private": true,
   "description": "TypeScript type definitions for browser libraries distributed via CDN, in the spirit of DefinitelyTyped.",
   "license": "MIT",
   "packageManager": "pnpm@11.10.0",
