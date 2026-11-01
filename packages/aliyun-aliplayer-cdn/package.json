@@ -1,7 +1,7 @@
 {
   "name": "@an-types/aliyun-aliplayer-cdn",
-  "version": "2.19.0",
-  "description": "Highly detailed TypeScript type definitions for the Aliyun Aliplayer CDN bundle (aliplayer-min.js), derived from and validated against the actual runtime of v2.19.0.",
+  "version": "2.38.0",
+  "description": "Highly detailed TypeScript type definitions for the Aliyun Aliplayer CDN bundle (aliplayer-min.js), derived from and validated against the actual runtime of v2.38.0.",
   "keywords": [
     "typescript",
     "types",
@@ -25,14 +25,14 @@
   ],
   "license": "MIT",
   "author": "an-types",
-  "homepage": "https://github.com/an-types/an-types#readme",
+  "homepage": "https://github.com/AnNingUI/an-types#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/an-types/an-types.git",
+    "url": "git+https://github.com/AnNingUI/an-types.git",
     "directory": "packages/aliyun-aliplayer-cdn"
   },
   "bugs": {
-    "url": "https://github.com/an-types/an-types/issues"
+    "url": "https://github.com/AnNingUI/an-types/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -54,13 +54,13 @@
   "anTypes": {
     "provenance": {
       "comment": "The artifact these types describe. The package version MUST equal the player version in the bundle banner; tools/verify-source.mjs enforces this. Namespaced rather than a top-level field so no bundler or package manager can mistake it for a module-resolution hint.",
-      "bundleUrl": "https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/aliplayer-min.js",
+      "bundleUrl": "https://g.alicdn.com/apsara-media-box/imp-web-player/2.38.0/aliplayer-min.js",
       "bannerPattern": "aliyun-aliplayer\\s*-\\s*v([0-9]+\\.[0-9]+\\.[0-9]+)",
       "cacheFile": "aliyun-aliplayer-cdn.js",
-      "sha256": "7c2bf11bb9d552fb161997cc2c6ba0a92de71e755da6a1ddd0edc89eca1ff436",
-      "bytes": 630798,
-      "cssUrl": "https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/skins/default/aliplayer-min.css",
-      "rtsVersion": "2.4.3",
+      "sha256": "ba6f425f5017268c8ec1739cbe0b742eaaae88b661330bdf7f96fa287c6bfebf",
+      "bytes": 741163,
+      "cssUrl": "https://g.alicdn.com/apsara-media-box/imp-web-player/2.38.0/skins/default/aliplayer-min.css",
+      "rtsVersion": "2.9.1",
       "flashVersion": "2.8.2"
     }
   },

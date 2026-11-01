@@ -2,20 +2,28 @@
 // @an-types/aliyun-aliplayer-cdn  —  TypeScript definitions
 //
 // Target artifact:
-//   https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/aliplayer-min.js
-//   (banner: /*! aliyun-aliplayer - v2.19.0 - 2023-12-01 11.44.13 */)
+//   https://g.alicdn.com/apsara-media-box/imp-web-player/2.38.0/aliplayer-min.js
+//   (banner: /*! aliyun-aliplayer - v2.38.0 - 2026-07-01 11.29.40 */)
 //
 // These declarations were derived by decompiling the published bundle into its
-// 163 Browserify modules and by executing the real bundle under jsdom to
+// 191 Browserify modules and by executing the real bundle in a headless DOM to
 // enumerate the live prototype chain, own instance state, the `EventType`
 // registry and the exact `paramData` payloads behind every `trigger()` call.
 // They therefore describe what the code *actually does*, which differs from the
 // marketing API in several documented below places (misspelled `liveShiftSerivce`,
 // `setSanpshotProperties`, `getRecentOccuredEvent`, `on()` returning `void`, …).
 //
+// Since the 2.19.0 revision of these types the runtime gained: the 7 new Player
+// events (ABR / subtitle-pipeline / videoUnavailable), the snapshot API
+// (`takeSnapshot` + correctly-spelled `setSnapshotProperties` alias), watch-time
+// and sub-clip regions, logo/watermark/memory-play UI, a second monitor
+// (`_monitor2`) and a `tracer` static (RUM, off by default). Removed:
+// `firstNewUrlloadByUrl`, `setControls`, `offListener` — see their @deprecated
+// markers below. As of 2024-12-01 Aliyun requires a license for new deployments.
+//
 // Installation (CDN global):
-//   <script src="https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/aliplayer-min.js"></script>
-//   <script src="https://g.alicdn.com/apsara-media-box/imp-web-player/2.19.0/aliplayer-min.css"></script>
+//   <script src="https://g.alicdn.com/apsara-media-box/imp-web-player/2.38.0/aliplayer-min.js"></script>
+//   <link href="https://g.alicdn.com/apsara-media-box/imp-web-player/2.38.0/skins/default/aliplayer-min.css" rel="stylesheet">
 //   then either reference `window.Aliplayer` globally (UMD `export as namespace`)
 //   or `import Aliplayer from "@an-types/aliyun-aliplayer-cdn";` for types only.
 // =============================================================================
@@ -29,7 +37,8 @@ export as namespace Aliplayer;
 // The bundle's UMD wrapper assigns a plain factory function to
 // `window.Aliplayer`. That function does `return Aliplayer.create(...)` internally,
 // so it works both with and without `new`, and it carries the static members
-// (`getVersion`, `util`, `Component`, `EventType`, `players`, `reloadInstance`).
+// (`getVersion`, `util`, `Component`, `EventType`, `players`, `reloadInstance`,
+// `tracer`).
 // A `var` of an interface with both call and construct signatures models this
 // exactly and keeps `import Aliplayer from "…"` working under `esModuleInterop`.
 // -----------------------------------------------------------------------------
@@ -46,7 +55,7 @@ interface Aliplayer {
   (tagOrId: string | HTMLElement, options?: Aliplayer.AliplayerOptions, readyCallback?: Aliplayer.ReadyCallback): Aliplayer.Aliplayer;
   new (tagOrId: string | HTMLElement, options?: Aliplayer.AliplayerOptions, readyCallback?: Aliplayer.ReadyCallback): Aliplayer.Aliplayer;
 
-  /** The running player build, read from the bundled `package.json` (`"2.19.0"`). */
+  /** The running player build, read from the bundled `package.json` (`"2.38.0"`). */
   getVersion(): string;
 
   /**
@@ -104,6 +113,16 @@ interface Aliplayer {
     callback: (player: Aliplayer.Aliplayer) => void,
     oldInstance: Aliplayer.Aliplayer,
   ): Aliplayer.Aliplayer;
+
+  /**
+   * The `@ali/mediabox-quality-tracer` RUM client the bundle wraps itself in
+   * (new in 2.38.0: `window.Aliplayer = tracer.wrap(create)`; the factory and
+   * its tracer are the same callable object). Created **disabled** — it only
+   * turns on when a licence is configured — and it silently swallows errors
+   * from pages whose stack frames belong to the player's own CDN assets.
+   * Advanced surface; usually left alone.
+   */
+  tracer: Aliplayer.QualityTracer;
 }
 
 declare var Aliplayer: Aliplayer;
@@ -210,10 +229,25 @@ declare namespace Aliplayer {
     time: number;
     /** `data:` URL of the captured frame. */
     base64: string;
-    /** The base64 payload converted to a binary string. */
-    binary: string;
+    /**
+     * The base64 payload decoded: a plain binary string in 2.19.0, a
+     * **`Uint8Array`** since 2.38.0.
+     */
+    binary: string | Uint8Array;
     /** Non-empty when the canvas capture failed. */
     error?: string;
+  }
+
+  /** Return shape of {@link Aliplayer.takeSnapshot} (new in 2.38.0). */
+  interface SnapshotResult {
+    /** Capture position in seconds. */
+    time: number;
+    /** `data:image/jpeg;base64,…` URL, `""` when the capture failed. */
+    base64: string;
+    /** The base64 body as bytes (`atob` → `Uint8Array`), `""`-like when failed. */
+    binary: Uint8Array | string;
+    /** Tainted-canvas hint or empty string. */
+    error: string;
   }
 
   /** One subtitle entry in a `textTrackReady` payload. */
@@ -367,8 +401,90 @@ declare namespace Aliplayer {
     [key: string]: unknown;
   }
 
+  // ---- new in 2.38.0 --------------------------------------------------------
+
+  /** A quality/level entry as carried by the switch-result events (`Url` renamed to `url`). */
+  interface QualitySwitchEntry {
+    url?: string;
+    desc?: number | string;
+    bitrate?: number;
+    resolution?: string;
+    bandwidth?: number;
+    auto?: boolean;
+    [key: string]: unknown;
+  }
+
   /**
-   * Maps each public event name to the exact `paramData` type the 2.19 bundle
+   * `qualitySwitchResult` payload — success/failure of an explicit
+   * `_qualityService.changeQuality()` call.
+   * Failure emits `{ success: false, to, error: "Target level not found" }`.
+   */
+  interface QualitySwitchResultPayload {
+    success: boolean;
+    from: QualitySwitchEntry | null;
+    to: QualitySwitchEntry | null;
+    error?: string | unknown;
+  }
+
+  /** `abrQualitySwitch` payload — a level entry chosen by adaptive bitrate logic (level shape). */
+  type AbrQualitySwitchPayload = QualitySwitchEntry;
+
+  /** `vttSwitchResult` payload — result of loading/switching a VTT subtitle track. */
+  interface VttSwitchResultPayload {
+    success: boolean;
+    /** Language switched to. */
+    language: string;
+    /** Language previously active. */
+    originalLanguage?: string;
+    error?: string;
+    detail?: { error?: unknown; status?: number };
+  }
+
+  /** `videoUnavailable` is a signal-only event (live stream ended/no playable content). */
+  type VideoUnavailablePayload = undefined;
+
+  /** Cue descriptor carried inside the subtitle show/hide events. */
+  interface SubtitleCuePayload {
+    id?: string;
+    startTime: number;
+    endTime: number;
+    text: string;
+    region_id?: string;
+    align?: string;
+    position?: string | number;
+    line?: string | number;
+    size?: number;
+  }
+
+  /** `subtitleHeader` payload — emitted when the subtitle overlay/regions are rebuilt. */
+  interface SubtitleHeaderPayload {
+    overlayElement: HTMLElement;
+    regions: Array<{ id: string; element: HTMLElement }>;
+    styles?: unknown;
+  }
+
+  /** `subtitleShow` payload — a cue rendered into the (custom) subtitle overlay. */
+  interface SubtitleShowPayload {
+    element: HTMLElement;
+    regionElement?: HTMLElement;
+    cue: SubtitleCuePayload | null;
+    activeCueCount: number;
+    fromSeek: boolean;
+    animations?: Record<string, unknown>;
+  }
+
+  /** `subtitleHide` payload — a cue removed from the overlay. */
+  interface SubtitleHidePayload {
+    element: HTMLElement;
+    regionElement?: HTMLElement;
+    cue: SubtitleCuePayload | null;
+    fromSeek: boolean;
+    fromReset: boolean;
+    animations?: Record<string, unknown>;
+  }
+
+  /**
+   * Maps each public event name to the exact `paramData` type the 2.38.0 bundle
    * passes at its `trigger()` call sites. `undefined` means "signal only".
    */
   interface PlayerEventPayloadMap {
@@ -418,6 +534,23 @@ declare namespace Aliplayer {
      * Carried whenever the lifecycle manager re-dispatches a media event.
      */
     lifeCycleChanged: { type: string; data: Event | AliplayerEvent<unknown> };
+
+    // ---- new in 2.38.0 ------------------------------------------------------
+
+    /** Signal-only: the live source can no longer deliver playable content. */
+    videoUnavailable: undefined;
+    /** Result of an explicit `_qualityService.changeQuality()` switch. */
+    qualitySwitchResult: QualitySwitchResultPayload;
+    /** ABR chose a new level (only when NOT using hls.js; `_qualityService` levels). */
+    abrQualitySwitch: AbrQualitySwitchPayload;
+    /** Result of loading/switching a VTT subtitle track in the custom pipeline. */
+    vttSwitchResult: VttSwitchResultPayload;
+    /** The custom subtitle overlay rebuilt its region containers. */
+    subtitleHeader: SubtitleHeaderPayload;
+    /** A cue was rendered into the (custom) subtitle overlay. */
+    subtitleShow: SubtitleShowPayload;
+    /** A cue was removed from the (custom) subtitle overlay. */
+    subtitleHide: SubtitleHidePayload;
   }
 
   /**
@@ -475,6 +608,20 @@ declare namespace Aliplayer {
     readonly H265DecoderOverload: 'h265DecoderOverload';
     readonly SettingSelected: 'settingSelected';
     readonly AutoResize: 'autoResize';
+    /** New in 2.38.0 */
+    readonly VideoUnavailable: 'videoUnavailable';
+    /** New in 2.38.0 */
+    readonly VttSwitchResult: 'vttSwitchResult';
+    /** New in 2.38.0 */
+    readonly QualitySwitchResult: 'qualitySwitchResult';
+    /** New in 2.38.0 */
+    readonly AbrQualitySwitch: 'abrQualitySwitch';
+    /** New in 2.38.0 */
+    readonly SubtitleHeader: 'subtitleHeader';
+    /** New in 2.38.0 */
+    readonly SubtitleShow: 'subtitleShow';
+    /** New in 2.38.0 */
+    readonly SubtitleHide: 'subtitleHide';
   }
 
   /**
@@ -507,6 +654,8 @@ declare namespace Aliplayer {
       readonly ManualEnded: 'manualended';
       readonly VolumeChange: 'volumechange';
       readonly RateChange: 'ratechange';
+      /** New in 2.38.0 */
+      readonly Resize: 'resize';
     };
     readonly Player: PlayerEventTypeMap;
     /** Internal UI plumbing — not part of the supported public surface. */
@@ -597,6 +746,31 @@ declare namespace Aliplayer {
       readonly VodRequestExceptionResume: 'vodRequestExceptionResume';
       readonly TraceLog: 'traceLog';
       readonly PlaybackRateChanged: 'playbackRateChanged';
+
+      // ---- new in 2.38.0 ----------------------------------------------------
+
+      /** flv.js `STATISTICS_INFO` passthrough (buffer/latency diagnostics). */
+      readonly StatisticsInfo: 'statisticsInfo';
+      /** FLV segment dump requested (used by the dump-buffer diagnostics). */
+      readonly DumpBuffer: 'dumpBuffer';
+      /** Structured stage timeline sample consumed by the monitor (`{ name, ts }`). */
+      readonly Timeline: 'timeline';
+      /** `play(true)` was called — user-initiated playback; feeds the "prepare2" timeline. */
+      readonly ManualPlay: 'manualPlay';
+      /** Muted-autoplay fallback engaged (`autoplayPolicy.fallbackToMute`). */
+      readonly MutedAutoplay: 'mutedAutoplay';
+      /** Dismiss the center unmute button. */
+      readonly HideUnmuteButton: 'hideUnmuteButton';
+      /** `setWatchTime` changed the watchable window; progress bar re-masks. */
+      readonly UpdateWatchTime: 'updateWatchTime';
+      /** Long-press fast-forward (2×) started — UI overlay shows. */
+      readonly FastForwardShow: 'fastForwardShow';
+      /** Long-press fast-forward ended — previous playbackRate restored. */
+      readonly FastForwardHide: 'fastForwardHide';
+      /** `player.showControlBar()` requested the bar. */
+      readonly ShowControlBarByAPI: 'showControlBarByAPI';
+      /** `player.hideControlBar()` requested hiding the bar. */
+      readonly HideControlBarByAPI: 'hideControlBarByAPI';
     };
   }
 
@@ -642,7 +816,33 @@ declare namespace Aliplayer {
     readonly DrmNotSupported: 4021;
     readonly DrmLoadError: 4022;
     readonly RegionBlock: 4023;
+    /** New in 2.38.0 — VOD request replayed with an already-used nonce. */
+    readonly VodNonceUsed: 4024;
+    /** New in 2.38.0 — URL forbidden by the service side. */
+    readonly UrlForbidden: 4025;
     readonly CrossDomain: 4027;
+    /**
+     * New in 2.38.0 — a lazily-loaded feature bundle (hls/flv/drm/dash/sw)
+     * failed to load from the CDN.
+     */
+    readonly ModuleLoadError: 4034;
+    /** New in 2.38.0 — generic license verification failure. */
+    readonly LicenseError: 4035;
+    /** New in 2.38.0 — `license.key`/`license.domain` missing. */
+    readonly LicenseEmpty: 4036;
+    /** New in 2.38.0 — license not found for this domain/key. */
+    readonly LicenseNotFound: 4037;
+    /** New in 2.38.0 — license expired (basic licenses are 1-year valid). */
+    readonly LicenseExpired: 4038;
+    /** New in 2.38.0 — license key malformed/invalid. */
+    readonly LicenseKeyInvalid: 4039;
+    /** New in 2.38.0 — license not valid for the current domain. */
+    readonly LicenseDomainInvalid: 4040;
+    /**
+     * New in 2.38.0 — licensed but feature (H.265/H.266…) not authorized.
+     * Note the typo `Featrue` is present in the shipped bundle.
+     */
+    readonly LicenseFeatrueUnauthorized: 4041;
     readonly OtherError: 4400;
     readonly ServerAPIError: 4500;
     readonly FlashNotInstalled: 4600;
@@ -778,13 +978,13 @@ declare namespace Aliplayer {
 
     /** Play as live: no duration semantics, live-retry + `liveStreamStop`. Default `false`. */
     isLive?: boolean | undefined;
-    /** Autoplay. Default `true`. */
+    /** Autoplay. Default `true`. When blocked, {@link autoplayPolicy} may retry muted. */
     autoplay?: boolean | undefined;
-    /** `preload` attribute on the media element. Default `true`. */
+    /** `preload` attribute on the media element. Default `true`; forced `false` when `isLive && !autoplay && isRts`. */
     preload?: boolean | undefined;
     /** Loop VOD playback. Default `false`. */
     rePlay?: boolean | undefined;
-    /** Use the browser's native `<video controls>`. Default `false`. */
+    /** Use the browser's native `<video controls>` and skip the skin entirely. Default `false`. */
     useNativeControls?: boolean | undefined;
     /**
      * Allow the browser context menu on the video. Default `false`, in which
@@ -1004,9 +1204,9 @@ declare namespace Aliplayer {
     enableMSEForAndroid?: boolean | undefined;
     /** Prefer hls.js on capable mobile browsers. Default `true`. */
     useHlsPlugOnMobile?: boolean | undefined;
-    /** Prefer flv.js on mobile. Default `false`. */
+    /** Prefer flv.js on mobile. `false` in 2.19; **`true` since 2.38.0**. */
     useFlvPlugOnMobile?: boolean | undefined;
-    /** Pin hls.js v2. `undefined` ⇒ auto-select. */
+    /** Pin hls.js v2. `undefined` ⇒ auto-select in 2.19; **hard default `true` since 2.38.0**. */
     useHls2?: boolean | undefined;
     /** Run demuxing in a Web Worker. Default `true`. */
     enableWorker?: boolean | undefined;
@@ -1096,22 +1296,191 @@ declare namespace Aliplayer {
 
     /** Anti screen-capture / recording protection. Default `false`. */
     preventRecord?: boolean | undefined;
-    /** AI labelling feature switches (`ai.label` suppresses the `autoplay` attribute on iOS). */
+    /**
+     * @deprecated AI labelling feature switches existed only up to 2.19.0. The
+     * 2.38.0 bundle never reads `_options.ai`; the key is still merged into the
+     * options object (harmless) but has no effect.
+     */
     ai?: { label?: boolean; [key: string]: unknown } | undefined;
-    /** Commercial licence for H.265/H.266 features. */
+    /**
+     * Commercial licence. **Since 2024-12-01 Aliyun requires a licence for ALL
+     * new deployments** (the basic licence is free, 1-year validity; H.265/H.266
+     * need feature licences). Without `key`+`domain` the player logs a warning
+     * and playback fails with `LicenseEmpty` (4036) / related 4035–4041 codes.
+     */
     license?: { key?: string; domain?: string; [key: string]: unknown } | undefined;
     /** Canvas watermark baked into snapshot output. */
     snapshotWatermark?: SnapshotWatermark | undefined;
     /** VOD play/preview configuration (trial window). */
     playConfig?: PlayConfig | undefined;
 
+    // ---- new in 2.38.0: autoplay policy ---------------------------------------
+
+    /**
+     * Autoplay policy bag. When `fallbackToMute` is on, a blocked autoplay is
+     * retried muted; if it then succeeds the player fires the internal
+     * `mutedAutoplay` and (when `showUnmuteBtn`) reveals the center unmute
+     * button. Merged over the defaults, so you may pass a partial object.
+     * Default `{ fallbackToMute: false, showUnmuteBtn: true }`.
+     */
+    autoplayPolicy?: Partial<AutoplayPolicy> | undefined;
+    /** Start muted. New in 2.38.0. Default `false`. */
+    mute?: boolean | undefined;
+
+    // ---- new in 2.38.0: interaction & layout ----------------------------------
+
+    /**
+     * Toggle/mute on a single tap/click of the video. New in 2.38.0.
+     * Default `true` on PC, `false` on touch. Runtime flag `_clickPauseEnabled`;
+     * `enableClickPause()` / `disableClickPause()` toggle it live.
+     */
+    clickPause?: boolean | undefined;
+    /** Debounce (ms) for the click-to-pause detector. New in 2.38.0. Default `200`. */
+    clickPauseDelay?: number | undefined;
+    /** Double-click toggles fullscreen. New in 2.38.0. Default `true` on PC. */
+    dbClickFullscreen?: boolean | undefined;
+    /** Debounce (ms) distinguishing double-click from single click. New in 2.38.0. Default `200`. */
+    dbClickFullscreenDelay?: number | undefined;
+    /**
+     * Double-click to skip a configured segment window. New in 2.38.0. Default
+     * `false`. Mutually exclusive with {@link dbClickFullscreen}: the component
+     * is only mounted when `dbClickSkip && !dbClickFullscreen`
+     * (`playerutil.enableDbClickSkip`), so you must turn double-click-fullscreen
+     * off to use double-click-skip.
+     */
+    dbClickSkip?: boolean | undefined;
+    /** Long-press fast-forwards at 2× (restores rate on release). New in 2.38.0. Default `false` on PC, `true` on touch. */
+    longPressFastForward?: boolean | undefined;
+    /** Hide the browser picture-in-picture button. New in 2.38.0. Default `false`. */
+    disablePip?: boolean | undefined;
+    /**
+     * Freeze seeking: the progress bar greys out and click/keyboard seeks are
+     * rejected (the playhead value is retained in `_currentTimeForDisableSeek`).
+     * New in 2.38.0. Default `false`.
+     */
+    disableSeek?: boolean | undefined;
+    /** Menu style: `'fold'` collapses speed/quality/cc/audio into the setting menu; `'expand'` puts them directly on the control bar. New in 2.38.0. Default `"fold"`. */
+    menuMode?: 'fold' | 'expand' | undefined;
+    /**
+     * Component names removed from the resolved `skinLayout`. Accepts top-level
+     * names or `"controlBar.speed"`-style dotted paths. New in 2.38.0. Default `[]`.
+     */
+    skinLayoutIgnore?: string[] | undefined;
+    /** Auto-size the player to the video's intrinsic dimensions. New in 2.38.0. */
+    autoSize?: string | boolean | undefined;
+    /**
+     * Prefix that replaces the CDN `domain+path+h5Version` root for the
+     * lazily-loaded `hls`/`flv`/`drm`/`dash`/`splayer` scripts and skin images —
+     * for self-hosting the bundle set. New in 2.38.0. Default `null`.
+     */
+    assetPrefix?: string | null | undefined;
+
+    // ---- new in 2.38.0: watch window & sub-clip --------------------------------
+
+    /**
+     * Start of the watchable window in seconds (foreground seek is clamped to
+     * `[watchStartTime, watchEndTime]`). New in 2.38.0. Ignored when
+     * {@link start}/{@link end} are set.
+     */
+    watchStartTime?: number | undefined;
+    /** End of the watchable window. New in 2.38.0. */
+    watchEndTime?: number | undefined;
+    /** Sub-clip start (seconds) — the visible timeline begins here. New in 2.38.0. */
+    start?: number | undefined;
+    /** Sub-clip end (seconds). New in 2.38.0. */
+    end?: number | undefined;
+
+    // ---- new in 2.38.0: ABR & quality ------------------------------------------
+
+    /** Adaptive-bitrate playback on/off. New in 2.38.0. Default `true`. */
+    enableABR?: boolean | undefined;
+    /** Level to lock when `enableABR` is off (`{ index }` into the levels list). New in 2.38.0. */
+    startQuality?: { index?: number } | undefined;
+    /** Maps a level's numeric descriptor to display text. New in 2.38.0. */
+    bitrateDisplayHandler?: (info: { bandwidth: number; bitrate: number; width: number; height: number }) => string | undefined;
+
+    // ---- new in 2.38.0: subtitle pipeline --------------------------------------
+
+    /** Preferred subtitle language on load. New in 2.38.0. */
+    defaultSubtitleLang?: string | undefined;
+    /** Defer VTT subtitle fetching. New in 2.38.0. Default `false`. */
+    lazySubtitleLoad?: boolean | undefined;
+    /**
+     * Subtitle renderer selection. New in 2.38.0. `undefined`/`0`/`1` ⇒ custom
+     * DOM renderer, `2` ⇒ native `<track>` renderer, `3` ⇒ event-driven (see the
+     * `subtitleHeader`/`subtitleShow`/`subtitleHide` events).
+     */
+    subtitleRenderMode?: 0 | 1 | 2 | 3 | undefined;
+    /** Pause subtitle re-rendering while paused. New in 2.38.0. Default `false`. */
+    disableSubtitlePausedUpdate?: boolean | undefined;
+    /** Hook to transform/edit cue text before render. New in 2.38.0. */
+    subtitleEditor?: ((text: string) => string) | undefined;
+    /** Extra CSS region/style overrides handed to the VTT renderer. New in 2.38.0. */
+    subtitleStyleConfig?: Record<string, unknown> | undefined;
+
+    // ---- new in 2.38.0: overlay & memory play ----------------------------------
+
+    /** Logo image overlays. New in 2.38.0. Default `[]`. */
+    logo?: LogoItem[] | undefined;
+    /** Animated (bullet/ghost) watermark overlay. New in 2.38.0. */
+    watermark?: DynamicWatermarkConfig | undefined;
+    /** Remember/restore the playback position across navigations. New in 2.38.0. */
+    memoryPlay?: MemoryPlayConfig | undefined;
+    /** Progress-bar pointer geometry override (for rotated/scaled containers). New in 2.38.0. */
+    progressTransform?: { landscape?: boolean; scale?: number } | undefined;
+
+    // ---- new in 2.38.0: retry & engine passthroughs ----------------------------
+
+    /** Disable the "half-retry" VOD recovery path. New in 2.38.0. Default `false`. */
+    disableVodHalfRetry?: boolean | undefined;
+    /** Disable the "half-retry" live recovery path. New in 2.38.0. Default `false`. */
+    disableLiveHalfRetry?: boolean | undefined;
+    /** Play-info result shape. `"Multiple"` returns all DRM/encrypted variants together. New in 2.38.0. */
+    resultType?: 'Multiple' | string | undefined;
+    /** Select the DRM 2.0 pipeline. New in 2.38.0; defaults on when DRM + accessKeyId are present. */
+    useDrm2?: boolean | undefined;
+    /** Pass-through bag to the RTS SDK. New in 2.38.0. Default `{}`. */
+    rtsOption?: Record<string, unknown> | undefined;
+    /**
+     * Enable RTS-to-classical fallback when `artc://` negotiation fails.
+     * New in 2.38.0. Default `false`.
+     */
+    rtsFallback?: boolean | undefined;
+    /** Fallback transport for {@link rtsFallback}: `undefined` ⇒ auto FLV-then-HLS. New in 2.38.0. */
+    rtsFallbackType?: 'FLV' | 'HLS' | string | undefined;
+    /** Custom dash.js bundle URL. New in 2.38.0. */
+    dashjsUrl?: string | null | undefined;
+    /** Pass-through config for dash.js. New in 2.38.0. Default `{}`. */
+    dashOption?: Record<string, unknown> | undefined;
+    /** Enable HLS-level H.265 software decode. New in 2.38.0. Default `false`. */
+    enableHlsH265?: boolean | undefined;
+    /** Disable FLV segment buffer-dumping diagnostics. New in 2.38.0. Default `false`. */
+    disableDumpBuffer?: boolean | undefined;
+    /** Route private VOD decryption through a Service Worker. New in 2.38.0. Default `false`. */
+    useSW?: boolean | undefined;
+    /** Absolute `https://` Service Worker URL for `useSW`. New in 2.38.0. */
+    swScriptURL?: string | undefined;
+
+    // ---- new in 2.38.0: telemetry -----------------------------------------------
+
+    /** Override the built-in log endpoint URL. New in 2.38.0. */
+    logReportTo?: string | undefined;
+    /** Region/environment tag (`"SEA"` routes RUM to ap-southeast-1). New in 2.38.0. Default `""`. */
+    env?: string | undefined;
+    /** Stats heartbeat interval (ms). New in 2.38.0. Default `5000`. */
+    statisticsReportInterval?: number | undefined;
+    /** Custom key/value bag appended to RUM telemetry as `c3`. New in 2.38.0. */
+    customData?: Record<string, string> | undefined;
+    /** Intercept every RUM payload before it is sent. New in 2.38.0. */
+    onLogReport?: (data: Record<string, unknown>) => void | undefined;
+
     // ---- engine option passthroughs ------------------------------------------
 
-    /** flv.js config override. Default `{ accurateSeek: true }`. */
+    /** flv.js config override. `{ accurateSeek: true }` in 2.19; **`{}` since 2.38.0** (the player no longer injects it). */
     flvOption?: FlvOption | undefined;
     /** hls.js config override. Default `{ stopLoadAsPaused: false }`. */
     hlsOption?: HlsOption | undefined;
-    /** Enable flv.js stash buffer. Default `true`. */
+    /** Enable flv.js stash buffer. `true` in 2.19; **`false` since 2.38.0**. */
     enableStashBufferForFlv?: boolean | undefined;
     /** Initial stash buffer size for flv.js (bytes). */
     stashInitialSizeForFlv?: number | undefined;
@@ -1124,16 +1493,21 @@ declare namespace Aliplayer {
     extLanguageTexts?: Record<string, string> | undefined;
 
     /**
-     * Controls: either `true` for native controls, or an object that is expanded
-     * into a control-bar skin layout and added as a child component.
+     * Controls: either `true` for native controls, or an object expanded into a
+     * control-bar skin layout added as a child component.
+     *
+     * @deprecated Only honoured through the removed `setControls()` in 2.19.0.
+     * The 2.38.0 bundle never reads this key — use {@link useNativeControls} for
+     * native chrome or {@link skinLayout} for a custom control bar. The key is
+     * still merged into `_options` (harmless).
      */
     controls?: boolean | UIComponentOptions | undefined;
 
     /**
-     * Child-component list. Normally you set {@link skinLayout} instead;
-     * `initChildren()` copies `skinLayout` into `children`, and `setControls()`
-     * does the same for the object form of `controls`, so this key is present on
-     * `_options` on every live player.
+     * Child-component list. Normally you set {@link skinLayout} instead:
+     * `initChildren()` copies `skinLayout` into `children`, so this key is
+     * present on `_options` on every live player (in 2.19.0 the removed
+     * `setControls()` did the same for the object form of `controls`).
      */
     children?: SkinLayoutItem[] | false | undefined;
 
@@ -1171,10 +1545,12 @@ declare namespace Aliplayer {
     [key: string]: unknown;
   }
 
-  /** Known built-in component names (keys of `player.UI`). */
+  /** Component names the runtime can place in `player.UI` (registry + conditional mounts). */
   type BuiltinComponentName =
     | 'H5Loading'
     | 'bigPlayButton'
+    /** New in 2.38.0 — center "tap to unmute" button (shown after muted autoplay). */
+    | 'unmuteButton'
     | 'controlBar'
     | 'progress'
     | 'playButton'
@@ -1182,6 +1558,14 @@ declare namespace Aliplayer {
     | 'timeDisplay'
     | 'fullScreenButton'
     | 'volume'
+    /** New in 2.38.0 — playback-rate selector (control-bar child under `menuMode:'expand'`). */
+    | 'speed'
+    /** New in 2.38.0 — quality selector. */
+    | 'quality'
+    /** New in 2.38.0 — closed-caption entry (separate from the legacy `subtitle` cc-button). */
+    | 'cc'
+    /** New in 2.38.0 — audio-track selector. */
+    | 'audio'
     | 'snapshot'
     | 'errorDisplay'
     | 'infoDisplay'
@@ -1192,10 +1576,14 @@ declare namespace Aliplayer {
     | 'thumbnail'
     | 'tooltip'
     | 'cover'
-    | 'playanimation'
     | 'autoStreamSelector'
     | 'progressMarker'
     | 'textTrackDisplay'
+    /** Conditional mounts in 2.38.0, driven by options: see {@link AliplayerOptions}. */
+    | 'pressFastForward'
+    | 'doubleClickSkip'
+    | 'dynamicWatermark'
+    | 'memoryPlay'
     /** Flash-only children present in the default flash layout. */
     | 'nextButton'
     | 'streamButton'
@@ -1239,6 +1627,76 @@ declare namespace Aliplayer {
      * `exceedPreviewTime()`).
      */
     PreviewTime?: number;
+    [key: string]: unknown;
+  }
+
+  /** `autoplayPolicy` bag (new in 2.38.0). */
+  interface AutoplayPolicy {
+    /** Retry a blocked autoplay muted. Default `false`. */
+    fallbackToMute: boolean;
+    /** Show the center "tap to unmute" button after a muted autoplay. Default `true`. */
+    showUnmuteBtn: boolean;
+  }
+
+  /**
+   * One logo overlay entry (`logo` option, new in 2.38.0). Rendered by the
+   * LogoManager as an absolutely-positioned `<img class="prism-logo">` over the
+   * video, re-laid-out on container/video resize and fullscreen changes.
+   */
+  interface LogoItem {
+    /** Image URL. */
+    src: string;
+    /** Anchor corner. Default `"top-left"`. */
+    position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | string;
+    /** Offset along X from the anchor. Default `0`. */
+    offsetX?: number;
+    /** Offset along Y from the anchor. Default `0`. */
+    offsetY?: number;
+    /** Reference box for percentage units. Default `"box"` (also `"content"`). */
+    origin?: 'box' | 'content' | string;
+    /** How width/height are interpreted. Default `"percentage"`. */
+    unit?: 'percentage' | 'pixel' | string;
+    width?: number;
+    height?: number;
+    [key: string]: unknown;
+  }
+
+  /** Dynamic (animated) watermark config — `watermark` option, new in 2.38.0. */
+  interface DynamicWatermarkConfig {
+    enable?: boolean;
+    /** Watermark text. */
+    text?: string;
+    /** Animation style: scrolling bullets or a fading ghost. Default `"BULLET"`. */
+    mode?: 'BULLET' | 'GHOST' | string;
+    /** Travel direction for BULLET mode; `"STATIC"` is forced to `"RTL"` for bullets. Default `"RTL"`. */
+    direction?: 'RTL' | 'LTR' | 'STATIC' | string;
+    /** 0–100 (clamped). Default 50 for BULLET, 30 for GHOST. */
+    speed?: number;
+    /** ms between bullets. Default 3000. */
+    interval?: number;
+    /** ms a bullet takes to cross. Default 5000. */
+    duration?: number;
+    /** 0–1 (clamped). Default 0.5. */
+    opacity?: number;
+    fontSize?: string;
+    fontColor?: string;
+    /** Inset bounds the animation stays inside. Default 0 each. */
+    top?: number;
+    left?: number;
+    right?: number;
+    bottom?: number;
+    [key: string]: unknown;
+  }
+
+  /** Memory-play config — `memoryPlay` option, new in 2.38.0 (VOD only). */
+  interface MemoryPlayConfig {
+    enable?: boolean;
+    /** Auto-seek to the remembered position instead of prompting. Default `false`. */
+    autoSeek?: boolean;
+    /** Custom storage read (key = `vid` or query-stripped `source`). May return a Promise. */
+    getTimeFunction?: ((key: string) => number | string | Promise<number | string>) | null;
+    /** Custom storage write. */
+    saveTimeFunction?: ((key: string, seconds: number) => void) | null;
     [key: string]: unknown;
   }
 
@@ -1515,9 +1973,11 @@ declare namespace Aliplayer {
   /**
    * `player.liveShiftSerivce`
    *
-   * ⚠️ The property name is misspelled **`liveShiftSerivce`** in the shipped
-   * bundle (module `service/liveshiftservice`), and is only created when
+   * ⚠️ The primary property name is misspelled **`liveShiftSerivce`** in the
+   * shipped bundle (module `service/liveshiftservice`), and is only created when
    * `isLive && liveStartTime && liveOverTime` (`playerutil.isLiveShift`).
+   * Since 2.38.0 the correctly-spelled `liveShiftService` is assigned as an
+   * alias of the very same object, so both work.
    */
   interface LiveShiftFacade {
     /** Re-set the shift window boundaries. */
@@ -1529,6 +1989,10 @@ declare namespace Aliplayer {
       onError?: (error: unknown) => void,
     ): void;
     isLiveShiftPlaying(): boolean;
+    /** Seconds still shift-available behind the live edge. New in 2.38.0. */
+    getLiveShiftOffset(): number;
+    /** Seek inside the shift window (accepts a `Date` or epoch-ms position). New in 2.38.0. */
+    seek(time: number | Date, cb?: unknown): unknown;
   }
 
   /** The full live-shift service behind the facade (`player._liveshiftService`). */
@@ -1553,6 +2017,9 @@ declare namespace Aliplayer {
     getBaseTime(): number;
     getSourceUrl(time: number): string;
     getTimeline(): unknown;
+    /** New in 2.38.0 — hls.js latency compensation. */
+    _getHlsLatency(): number;
+    _performSeek(time: number | Date): void;
     dispose(): void;
   }
 
@@ -1581,27 +2048,65 @@ declare namespace Aliplayer {
     /** Whether the platform exposes `video.audioTracks`. */
     support(): boolean;
     switch(id: string | number): void;
+    /** Track menu entries (`{ value, text }`), refreshed by the audio selector. New in 2.38.0. */
+    tracks?: AudioTrackInfo[];
+    /** Entry currently selected. New in 2.38.0. */
+    currentTrack?: AudioTrackInfo;
     dispose(): void;
   }
 
-  /** `player._qualityService` — HLS level bookkeeping. */
+  /**
+   * `player._qualityService` — HLS level bookkeeping. In 2.38.0 this gained the
+   * explicit quality-switch API: `changeQuality()` drives the
+   * `qualitySwitchResult` event and `getCurrentQuality()` returns the level map.
+   */
   interface QualityService {
     levels: QualityLevel[];
+    /** Snapshot of `levels` before an ABR-driven re-parse (2.38.0). */
+    backupLevels: QualityLevel[];
     /** Play-info entries whose `encryptionType` is Widevine-FairPlay. */
     drmUrl: UrlItem[];
     /** Parse a master playlist and trigger `levelsLoaded`. */
     loadLevels(url: string): void;
+    /** The level currently playing (`{ url, desc, auto }` shape; `auto` for ABR). */
+    getCurrentQuality(): QualitySwitchEntry;
+    /**
+     * Switch to a specific level. New in 2.38.0.
+     * @param quality selector: `{ id }`, or `{ url }` matched against
+     *        `levels`/`backupLevels`; an auto entry (`desc === 'Auto'`)
+     *        re-enables ABR.
+     * @returns the mapped target level, or `null` when no level matched — in
+     *          which case a `qualitySwitchResult` `{ success: false,
+     *          error: "Target level not found" }` is fired instead.
+     */
+    changeQuality(quality: { id?: string | number; url?: string; [key: string]: unknown }): QualitySwitchEntry | null;
+    /**
+     * @internal True while a `changeQuality()` switch is mid-flight (the service
+     * suppresses some `QualityChange` side effects while set).
+     */
+    _isSwitchingVideo: boolean;
+    _currentLevel: QualityLevel | QualitySwitchEntry | null;
+    _targetLevel: QualityLevel | QualitySwitchEntry | null;
+    /** Request guard for async master-playlist parses (2.38.0). */
+    _currentLevelsRequestId: number | null;
+    _isLoadingMasterPlaylist: boolean;
     dispose(): void;
   }
 
   interface QualityLevel {
     Url: string;
-    /** Height (falling back to width) used as the sort key. */
+    /**
+     * Height (2.19: `desc` = raw height; 2.38: `Math.min(width, height)`),
+     * post-processed into display text `"…p@…k"` unless
+     * `bitrateDisplayHandler` customises it.
+     */
     desc?: number | string;
     bitrate?: number;
     /** Raw `RESOLUTION` attribute, e.g. `"1280x720"`. */
     resolution?: string;
     bandwidth?: number;
+    /** The synthetic "Auto" (ABR) entry appended when `isVBR` (2.38.0). */
+    auto?: boolean;
   }
 
   /** `player._progressMarkerService` */
@@ -1685,7 +2190,9 @@ declare namespace Aliplayer {
     /**
      * Start or resume playback. If the media already ended, replays from zero;
      * otherwise lazily loads the source and calls the native `video.play()`.
-     * @param isManual truthy marks this as user-initiated (`_isManualPlay`).
+     * @param isManual truthy marks this as user-initiated (`_isManualPlay`) and,
+     * since 2.38.0, fires the internal `manualPlay` event (feeds the monitor's
+     * "prepare2" timeline sample).
      * @chainable
      */
     play(isManual?: boolean): this;
@@ -1707,10 +2214,20 @@ declare namespace Aliplayer {
     paused(): boolean;
     /** Whether the media is muted (native `video.muted`). */
     muted(): boolean;
-    /** Mute and remember the previous volume. @chainable */
-    mute(): this;
-    /** Restore the volume captured by {@link mute}. @chainable */
-    unMute(): this;
+    /**
+     * Mute and remember the previous volume.
+     * @param silent suppress the localised "muted" toast (`info_show`). New
+     * parameter in 2.38.0 — in 2.19.0 `mute()` always shows the toast.
+     * @chainable
+     */
+    mute(silent?: boolean): this;
+    /**
+     * Restore the volume captured by {@link mute} (falls back to `0.5` when no
+     * prior volume was recorded).
+     * @param silent suppress the toast. New parameter in 2.38.0.
+     * @chainable
+     */
+    unMute(silent?: boolean): this;
     /**
      * Seek to an absolute position in seconds.
      * Floored to an integer and clamped to the duration; a `NaN` argument is
@@ -1780,8 +2297,88 @@ declare namespace Aliplayer {
      * @param autoRetry   internal: skip the abort/VV reporting and recreation guard
      */
     loadByUrl(url: string, time?: number, autoplay?: boolean, autoRetry?: boolean): void;
-    /** Reset the VOD state (`vid = 0`) and load a brand-new URL. */
-    firstNewUrlloadByUrl(url: string, autoplay?: boolean): void;
+    /**
+     * Load a URL with per-call ABR/subtitle overrides. New in 2.38.0.
+     * Each config field is applied only when its type matches (boolean / object
+     * / non-empty string), then delegates to `loadByUrl(url, seconds, autoPlay)`.
+     */
+    loadByUrlWithConfig(
+      url: string,
+      config?: {
+        /** Seek target in seconds. */
+        seconds?: number;
+        /** Start playing after load. */
+        autoPlay?: boolean;
+        /** Override `enableABR` for this load. */
+        enableABR?: boolean;
+        /** Override `startQuality` for this load. */
+        startQuality?: { index?: number };
+        /** Override `defaultSubtitleLang` for this load. */
+        defaultSubtitleLang?: string;
+      },
+    ): void;
+    /**
+     * @deprecated Removed in 2.38.0. The 2.19.0 bundle exposed
+     * `firstNewUrlloadByUrl(url, autoplay)`; nothing equivalent survives — use
+     * {@link loadByUrl} (which resets `vid` itself when `autoRetry` is falsy) or
+     * create a fresh player. Calling it on 2.38.0 throws `TypeError` like any
+     * missing method; it is kept in these declarations only so 2.19 code written
+     * against them fails loudly when it runs on 2.38.
+     */
+    firstNewUrlloadByUrl?: never;
+    /**
+     * Replace the logo overlays at runtime (rebuilds the internal LogoManager).
+     * New in 2.38.0.
+     */
+    setLogo(logo: LogoItem[]): void;
+    /**
+     * Clamp foreground seeking to the window `[start, end]` seconds; persisted
+     * into options. Pass `undefined` to clear. New in 2.38.0.
+     * Side effects: fires the internal `updateWatchTime`, may auto-`seek` into
+     * the window, and the progress bar re-masks the unwatchable regions.
+     * Ignored when the sub-clip {@link setStartEnd} bounds are set.
+     */
+    setWatchTime(start?: number, end?: number): void;
+    /** Set the watch window for the *next* load only (no immediate seek). New in 2.38.0. */
+    setNextWatchTime(start?: number, end?: number): void;
+    /**
+     * Restrict playback to the sub-clip `[start, end]` seconds — the visible
+     * timeline is re-based (`durationchange` fires, UI positions offset by
+     * `start`). Takes precedence over {@link setWatchTime}. New in 2.38.0.
+     */
+    setStartEnd(start?: number, end?: number): void;
+    /** Set the sub-clip bounds for the *next* load only. New in 2.38.0. */
+    setNextStartEnd(start?: number, end?: number): void;
+    /** Wall-clock seconds actually spent playing (accumulated by the time monitor). New in 2.38.0. */
+    getPlayTime(): number;
+    /** Begin the 1 s watch-time sampler (called by the monitor). New in 2.38.0. */
+    startPlayTimeMonitor(): void;
+    /** Stop the sampler started by {@link startPlayTimeMonitor}. New in 2.38.0. */
+    stopPlayTimeMonitor(): void;
+    /**
+     * Capture the current frame **synchronously**. New in 2.38.0.
+     * Honours {@link setSanpshotProperties} size/rate and the mirror transform;
+     * on a tainted canvas `error` carries the Chinese hint to set
+     * `extraInfo: { crossOrigin: "anonymous" }`.
+     * ⚠️ `binary` is a **`Uint8Array`** since 2.38.0 (plain binary string in 2.19.0).
+     */
+    takeSnapshot(): SnapshotResult;
+    /**
+     * Toggle/mute the player on a single click of the video area (the
+     * `clickPause` option seeds this). New in 2.38.0.
+     */
+    enableClickPause(): void;
+    /** Disable click-to-pause. New in 2.38.0. */
+    disableClickPause(): void;
+    /** Force the control bar visible (internal `showControlBarByAPI`). New in 2.38.0. */
+    showControlBar(): void;
+    /** Force the control bar hidden (internal `hideControlBarByAPI`). New in 2.38.0. */
+    hideControlBar(): void;
+    /**
+     * Whether `time` is seekable — exposed by the flv.js injectors only; the
+     * progress component feature-detects it before honouring a click.
+     */
+    canSeekable?(time: number): boolean;
     /**
      * Advance to the next URL in the multi-source list (`{HD:…, SD:…}` JSON
      * sources), wrapping to index 0 and counting retries. Persists the choice in
@@ -1938,24 +2535,38 @@ declare namespace Aliplayer {
     /**
      * Configure snapshot dimensions/quality.
      * ⚠️ The name is misspelled `setSanpshotProperties` in the bundle.
+     * Since 2.38.0 a correctly-spelled {@link setSnapshotProperties} alias also
+     * exists; the misspelled name remains the implementation.
      * @throws `Error("rate doesn't allow more than 1")` when `rate > 1`.
      */
     setSanpshotProperties(width: number, height: number, rate?: number): void;
+    /**
+     * Correctly-spelled alias of {@link setSanpshotProperties}. New in 2.38.0
+     * (`setSnapshotProperties(w,h,r){this.setSanpshotProperties(w,h,r)}`).
+     */
+    setSnapshotProperties(width: number, height: number, rate?: number): void;
 
     // ---- chrome control --------------------------------------------------------
 
-    /** Re-apply control visibility from `options.useNativeControls` / `options.controls`. */
-    setControls(): void;
+    /**
+     * @deprecated Removed in 2.38.0. In 2.19.0 this re-applied control visibility
+     * from `options.useNativeControls`/`options.controls`; 2.38.0 decides
+     * controls once in the constructor. Typed `never` so callers get a compile
+     * error instead of a runtime `TypeError`.
+     */
+    setControls?: never;
     /**
      * Look up a custom component registered through the `components` option by
      * its `name`. Delegates to `_lifeCycleManager.getComponent`; returns `null`
      * when no component with that name was created.
      */
     getComponent(name: string): AliplayerComponent | null;
-    /** Build a control bar component from an options object. */
-    _initControlBar(options: UIComponentOptions): AliplayerComponent;
-    /** Show the control bar. @chainable */
-    showControlBar?(): this;
+    /**
+     * Look up a *built-in* skin component by name. New in 2.38.0. Delegates to
+     * {@link getChild} (which also resolves the `"setting"`/`"volume"`
+     * control-bar shortcut); returns `undefined` when not mounted.
+     */
+    getBuildInComponent(name: BuiltinComponentName | string): AliplayerComponent | undefined;
     /** Hide the progress bar overlay. */
     hideProgress(): void;
     /** Cancel a pending progress-bar hide. */
@@ -1992,8 +2603,12 @@ declare namespace Aliplayer {
 
     // ---- telemetry helpers -----------------------------------------------------
 
-    /** Emit an internal `traceLog` event, prefixed `"[source]message"`. */
-    traceLog(source: string, message: string): void;
+    /**
+     * Emit an internal `traceLog` event, prefixed `"[source]message"`.
+     * @param toRum since 2.38.0, truthy also forwards the line to `_monitor2`
+     * (the RUM monitor). The runtime declares 3 parameters (arity 3).
+     */
+    traceLog(source: string, message: string, toRum?: boolean): void;
     /** Send one structured telemetry entry. */
     log(eventName: string, data?: Record<string, unknown>): void;
     /** Send an error telemetry entry (adds `vt` = current time automatically). */
@@ -2035,10 +2650,17 @@ declare namespace Aliplayer {
     off(names: readonly string[], handler?: PlayerEventListener<unknown>): this;
 
     /**
-     * Remove a handler previously attached to a specific element
-     * (mirrors `lib/event.off`, used for custom tooltip/DOM wiring). @chainable
+     * @deprecated Removed in 2.38.0 (from the player and its component base).
+     * In 2.19.0 this removed a handler attached to a specific element; the
+     * component base now only exposes {@link off}/{@link offAll}. Typed `never`
+     * to surface old call sites at compile time.
      */
-    offListener(target: EventTarget, name: string, handler?: PlayerEventListener<unknown>): this;
+    offListener?: never;
+    /**
+     * Remove **all** handlers for an event (or for every event when the name is
+     * omitted). New in 2.38.0. @chainable
+     */
+    offAll(name?: string): this;
 
     /**
      * Dispatch an event. With a `paramData`, the payload is stashed on the
@@ -2069,8 +2691,18 @@ declare namespace Aliplayer {
     UI: Record<string, ComponentClass>;
     /** Custom-component lifecycle dispatcher. */
     _lifeCycleManager: LifecycleManager;
-    /** Internal telemetry client (present unless the monitor was disposed). */
+    /** Internal telemetry client (legacy monitor; present unless disposed). */
     _monitor?: Monitor | null;
+    /**
+     * Second-generation monitor (new in 2.38.0): timeline/RUM statistics
+     * (`Private.Timeline`, `Private.StatisticsInfo` consumers, quality-switch
+     * reports, `traceLog(..., true)` forwarding). Created whenever `trackLog`.
+     */
+    _monitor2?: Record<string, unknown>;
+    /** Whether the (new) monitor already logged its once-per-session entry (2.38.0). */
+    _onceLogged?: boolean;
+    /** Whether a licence result has been handled once this session (2.38.0). */
+    _licenseHasResult?: boolean;
     /** Quality list for the current source. */
     _urls: UrlItem[];
     /** Index of the active entry in {@link _urls}. */
@@ -2099,6 +2731,28 @@ declare namespace Aliplayer {
     _waitingTimeoutCount: number;
     /** Server request id counter. */
     _serverRequestId: number;
+    /** Wall-clock ms of the last `loadByUrl`, feeds the play-time sampler (2.38.0). */
+    _loadByUrlStartTime?: number;
+    /** Accumulated actual playing time in ms, read by `getPlayTime()` (2.38.0). */
+    _playingTime?: number;
+    /** Stuck (buffering) accumulator in ms (2.38.0). */
+    _stuckTime?: number;
+    /** Stuck occurrence counter (2.38.0). */
+    _stuckCount?: number;
+    /** Sub-clip offset in seconds added to UI positions (2.38.0). */
+    _posOffset?: number;
+    /** Live when `clickPause` is active (2.38.0). */
+    _clickPauseEnabled?: boolean;
+    /** Playhead value retained while `disableSeek` freezes seeking (2.38.0). */
+    _currentTimeForDisableSeek?: number;
+    /** Set by `_loadByUrlInner` to mark a non-user URL switch (2.38.0). */
+    _isInnerUrlSwitch?: boolean;
+    /** Logo overlay manager rebuilt by `setLogo()` (2.38.0). */
+    _logoManager?: { dispose(): void; [key: string]: unknown } | undefined;
+    /** 1 s watch-time sampler handle used by `startPlayTimeMonitor()` (2.38.0). */
+    _playTimeMonitorTimer?: number | undefined;
+    /** FLV dump-buffer diagnostics timer (2.38.0). */
+    _flvDumpTimer?: number | undefined;
     /** Buffered SEI payloads keyed by presentation timestamp (ms). */
     _seis: Record<string, unknown>;
     /** Initial PTS base used to normalise HLS SEI timestamps. */
@@ -2132,6 +2786,11 @@ declare namespace Aliplayer {
      * bundle; only present when live time-shift is configured.
      */
     liveShiftSerivce?: LiveShiftFacade;
+    /**
+     * Correctly-spelled alias of {@link liveShiftSerivce} — the very same object
+     * (new in 2.38.0). In 2.19.0 only the misspelled name existed.
+     */
+    liveShiftService?: LiveShiftFacade;
     /** @see {@link LiveShiftService} */
     _liveshiftService?: LiveShiftService;
     /** Subtitle service. */
@@ -2222,11 +2881,13 @@ declare namespace Aliplayer {
     /** Add a child by registered name, or adopt an existing component instance. */
     addChild(child: BuiltinComponentName | string | AliplayerComponent, options?: UIComponentOptions): AliplayerComponent | undefined;
     removeChild(child: AliplayerComponent): void;
+    /** Depth-first search of the child tree by `_options.name`. New in 2.38.0. */
+    getChild(name: string): AliplayerComponent | undefined;
     /** Instantiate `options.children`. */
     initChildren(): void;
     one(name: string, handler: PlayerEventListener<unknown>): this;
     off(name: string, handler?: PlayerEventListener<unknown>): this;
-    offListener(target: EventTarget, name: string, handler?: PlayerEventListener<unknown>): this;
+    offAll(name?: string): this;
     trigger(name: string, paramData?: unknown): this;
     addClass(className: string): this;
     removeClass(className: string): this;
@@ -2343,6 +3004,38 @@ declare namespace Aliplayer {
   interface AliplayerUtil {
     /** Cancel bubbling cross-browser (`window.event.cancelBubble` or `stopPropagation`). */
     stopPropagation(event: Event | AliplayerEvent<unknown>): void;
+  }
+
+  // ===========================================================================
+  // 10. `Aliplayer.tracer` (new in 2.38.0)
+  // ===========================================================================
+
+  /**
+   * Surface of the bundled `@ali/mediabox-quality-tracer` client exposed as
+   * `Aliplayer.tracer`. The player is constructed inside `tracer.wrap(factory)`,
+   * the tracer starts **disabled**, and the constructor wires
+   * `updateOptions({ cid, region, beforeSend })` + `setReady()` on each
+   * creation. Methods are feature-detection friendly (all optional in typing
+   * except the guaranteed `wrap`, `updateOptions`, `setReady`).
+   */
+  interface QualityTracer {
+    /** Wrap a factory so thrown errors are reported before propagating. */
+    wrap<T extends (...args: any[]) => any>(factory: T): T;
+    /** Merge tracer configuration (cid/region/env/disabled/beforeSend/…). */
+    updateOptions(options: {
+      cid?: string;
+      region?: string;
+      env?: 'prod' | 'local' | string;
+      businessName?: string;
+      version?: string;
+      disabled?: boolean;
+      deferRegionSet?: boolean;
+      beforeSend?: (payload: Record<string, unknown>) => Record<string, unknown> | null | undefined;
+      [key: string]: unknown;
+    }): void;
+    /** Mark the tracer as configured and flush any queued events. */
+    setReady(): void;
+    sendImmediate?(payload: Record<string, unknown>): void;
   }
 }
 

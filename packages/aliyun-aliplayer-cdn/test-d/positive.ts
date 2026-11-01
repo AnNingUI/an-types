@@ -386,9 +386,51 @@ p1.loadByUrl('https://example.com/c.mp4');
 p1.loadByUrl('https://example.com/c.mp4', 10);
 p1.loadByUrl('https://example.com/c.mp4', 10, true);
 p1.loadByUrl('https://example.com/c.mp4', 10, true, true);
-p1.firstNewUrlloadByUrl('https://example.com/d.mp4');
-p1.firstNewUrlloadByUrl('https://example.com/d.mp4', true);
 p1.switchUrl();
+
+// loadByUrlWithConfig (new in 2.38.0): all fields optional, narrow per-type.
+p1.loadByUrlWithConfig('https://example.com/e.mp4');
+p1.loadByUrlWithConfig('https://example.com/e.mp4', {
+  seconds: 12,
+  autoPlay: true,
+  enableABR: false,
+  startQuality: { index: 2 },
+  defaultSubtitleLang: 'zh',
+});
+
+// takeSnapshot: synchronous, binary is Uint8Array since 2.38.0.
+const snap = p1.takeSnapshot();
+const snapTime: number = snap.time;
+const snapUrl: string = snap.base64;
+const snapErr: string = snap.error;
+// `binary` is the version-drift field: narrow before use.
+if (snap.binary instanceof Uint8Array) {
+  const byte0: number | undefined = snap.binary[0];
+  void byte0;
+}
+void snapTime; void snapUrl; void snapErr;
+
+// Watch-window & sub-clip APIs (new in 2.38.0).
+p1.setWatchTime(10, 100);
+p1.setWatchTime();
+p1.setNextWatchTime(0, undefined);
+p1.setStartEnd(30, 90);
+p1.setNextStartEnd(30, 90);
+const played: number = p1.getPlayTime();
+void played;
+p1.startPlayTimeMonitor();
+p1.stopPlayTimeMonitor();
+
+// Logos & control visibility (new in 2.38.0).
+p1.setLogo([{ src: 'logo.png', position: 'top-right', offsetX: 12, offsetY: 12, unit: 'percentage' }]);
+p1.showControlBar();
+p1.hideControlBar();
+p1.enableClickPause();
+p1.disableClickPause();
+
+// canSeekable is optional (only flv injectors expose it).
+const seekable: boolean | undefined = p1.canSeekable?.(12);
+void seekable;
 
 // VOD/SaaS re-auth paths.
 p1.replayByVidAndPlayAuth('vid', 'newPlayauth');
@@ -427,12 +469,20 @@ if (sample && typeof sample.setExtData === 'function') {
 p1.initPlay();
 p1.initPlay(true);
 p1.initChildren();
-p1.setControls();
 p1.hideProgress();
 p1.cancelHideProgress();
 p1.syncUI();
 p1.renderUI();
 p1.bindEvent();
+
+// Component-tree navigation (offAll / getChild are 2.38.0 replacements for the
+// removed offListener).
+p1.offAll();
+p1.offAll('play');
+const child = p1.getChild('cover');
+if (child) void child.el();
+const built = p1.getBuildInComponent('controlBar');
+if (built) void built.el();
 
 // Telemetry helpers.
 p1.traceLog('base/player', 'some detail');
@@ -465,7 +515,8 @@ p1.on('error', (e) => {
 p1.on('snapshoted', (e) => {
   const time: number = e.paramData.time;
   const base64: string = e.paramData.base64;
-  const binary: string = e.paramData.binary;
+  // `binary` drifted across versions: plain string in 2.19.0, Uint8Array in 2.38.0.
+  const binary: string | Uint8Array = e.paramData.binary;
   const err: string | undefined = e.paramData.error;
   void time; void base64; void binary; void err;
 });

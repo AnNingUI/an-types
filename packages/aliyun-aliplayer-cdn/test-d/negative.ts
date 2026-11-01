@@ -139,18 +139,13 @@ p.trigger('error', { error_code: 4400, error_msg: 'manual' });
 p.trigger('myOwnEvent', { anything: true });
 
 // ---------------------------------------------------------------------------
-// Misspelled runtime names are the *only* correct names (guards accidental
-// "corrections" that would silently break at runtime)
+// Misspelled runtime names: the misspelling stays the implementation name even
+// though 2.38.0 added a corrected alias for the snapshot setter and the
+// live-shift property. These directives guard the *still-wrong* names.
 // ---------------------------------------------------------------------------
 
-// @ts-expect-error the runtime method is `setSanpshotProperties`
-p.setSnapshotProperties(1, 2, 3);
-
-// @ts-expect-error the runtime method is `getRecentOccuredEvent`
+// @ts-expect-error the runtime method is `getRecentOccuredEvent` (no corrected alias exists)
 p.getRecentOccurredEvent();
-
-// @ts-expect-error the runtime property is `liveShiftSerivce` (sic)
-p.liveShiftService?.isLiveShiftPlaying();
 
 // @ts-expect-error the runtime property is `isMutiLevel` (sic)
 p.isMultiLevel;
@@ -158,6 +153,80 @@ p.isMultiLevel;
 // @ts-expect-error `Aliplayer.ErrorCode` is a type, never a runtime value
 const codeValue = Aliplayer.ErrorCode.NotFoundSourceURL;
 void codeValue;
+
+// ---------------------------------------------------------------------------
+// APIs removed in 2.38.0 — typed as `never` so old call sites fail at compile
+// time (their runtime absence would otherwise be a TypeError mid-playback).
+// ---------------------------------------------------------------------------
+
+// @ts-expect-error `firstNewUrlloadByUrl` no longer exists in 2.38.0
+p.firstNewUrlloadByUrl('https://example.com/x.mp4');
+
+// @ts-expect-error `setControls` no longer exists in 2.38.0
+p.setControls();
+
+// @ts-expect-error `offListener` no longer exists on player or component
+p.offListener(document.body, 'click');
+
+// ---------------------------------------------------------------------------
+// Signature widening in 2.38.0: `mute`/`unMute` gained an optional `silent`
+// flag, but it is still boolean-typed.
+// ---------------------------------------------------------------------------
+
+// @ts-expect-error `mute(silent)` takes a boolean, not an arbitrary string
+p.mute('loud');
+
+// ---------------------------------------------------------------------------
+// New-in-2.38.0 option unions are just as closed as the old ones.
+// ---------------------------------------------------------------------------
+
+// @ts-expect-error `menuMode` is a closed union
+new Aliplayer({ id: 'player', menuMode: 'drawer' });
+
+// @ts-expect-error `subtitleRenderMode` accepts only 0..3
+new Aliplayer({ id: 'player', subtitleRenderMode: 7 });
+
+// @ts-expect-error `autoplayPolicy.fallbackToMute` is boolean
+new Aliplayer({ id: 'player', autoplayPolicy: { fallbackToMute: 'yes' } });
+
+// @ts-expect-error `resultType` is the 'Multiple' sentinel or a free string, not a boolean
+new Aliplayer({ id: 'player', resultType: true });
+
+// @ts-expect-error `LogoItem.position` is one of four corners (free strings allowed via `string`)
+new Aliplayer({ id: 'player', logo: [{ src: 'x.png', position: 12 }] });
+
+// @ts-expect-error `watermark.speed` is a number (clamped 0–100), not a word
+new Aliplayer({ id: 'player', watermark: { speed: 'fast' } });
+
+// @ts-expect-error `watermark.opacity` is a number, not a string percentage
+new Aliplayer({ id: 'player', watermark: { opacity: '50%' } });
+
+// @ts-expect-error `memoryPlay.getTimeFunction` returns a value, not a void-only callback
+new Aliplayer({ id: 'player', memoryPlay: { getTimeFunction: (k: string) => { void k; } } });
+
+// ---------------------------------------------------------------------------
+// 2.38.0 new event payloads: each is a distinct shape.
+// ---------------------------------------------------------------------------
+
+p.on('qualitySwitchResult', (e) => {
+  // @ts-expect-error `success` is a boolean, not a string
+  const wrong: string = e.paramData.success;
+  void wrong;
+});
+
+p.on('vttSwitchResult', (e) => {
+  // @ts-expect-error the payload has no `subtitle` field
+  const wrong = e.paramData.subtitle;
+  void wrong;
+});
+
+p.on('abrQualitySwitch', (e) => {
+  // The 2.38.0 level mapper renames `Url` → `url`, so the PascalCase key falls
+  // through to the `unknown` index — never a plain string.
+  // @ts-expect-error `unknown` is not assignable to `string`
+  const wrong: string = e.paramData.Url;
+  void wrong;
+});
 
 // ---------------------------------------------------------------------------
 // Instance properties
